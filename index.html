@@ -283,7 +283,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>일별 미배정 직원</h2>
             </div>
-        <div class="version">Version: 1.48 주52시간 적용 (연차/반차 계산 포함)</div>
+        <div class="version">Version: 1.49 주52시간 적용 (연차/반차 계산 포함)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -305,6 +305,10 @@
     // 주간 잔업 상세 내역을 저장할 전역 맵
     // Key: 작업자 이름, Value: Map (Key: 날짜, Value: 상세 잔업 정보 배열)
     const workerDetailedOvertime = new Map();
+
+    // 직원별 연차/교육일 기록 (전역으로 이동)
+    const workerAbsenceInfo = new Map(allWorkers.map(worker => [worker, { full: new Set(), half: new Set() }]));
+
 
     document.getElementById('processButton').addEventListener('click', processWorkData);
     document.getElementById('clearButton').addEventListener('click', clearTextarea);
@@ -347,7 +351,12 @@
             workerDetailedOvertime.set(worker, new Map());
         });
         const workerWeeklyOvertimeSum = new Map(allWorkers.map(worker => [worker, 0]));
-        const workerAbsenceInfo = new Map(allWorkers.map(worker => [worker, { full: new Set(), half: new Set() }]));
+        // workerAbsenceInfo는 전역이므로 여기서 초기화 대신 clear()를 사용
+        allWorkers.forEach(worker => {
+            workerAbsenceInfo.get(worker).full.clear();
+            workerAbsenceInfo.get(worker).half.clear();
+        });
+        
 
         // allDailyUnassigned 변수를 여기서 선언합니다.
         const allDailyUnassigned = {}; // 날짜별 미배정 직원 저장
@@ -468,8 +477,20 @@
                     if (lineOvertimeMinutes > 0) {
                         lineAssignedWorkers.forEach(worker => {
                             const currentOvertime = tempDailyOvertimeForWorkers.get(worker);
-                            currentOvertime.overtime = Math.max(currentOvertime.overtime, lineOvertimeMinutes); // 더 큰 값으로 갱신 (중복 방지)
-                            currentOvertime.types.add(overtimeType + ` (${rawLineContentShort})`); // 상세 내역에 타입과 라인 정보 기록
+                            
+                            // 해당 작업자에 대해 이미 종료시간 초과 잔업이 기록되었는지 확인
+                            const hasExistingEndTimeOvertime = Array.from(currentOvertime.types).some(type => type.includes('평일 종료시간 초과'));
+
+                            if (isWeekend) {
+                                currentOvertime.overtime = Math.max(currentOvertime.overtime, lineOvertimeMinutes); // 주말은 Max값
+                                currentOvertime.types.add(overtimeType + ` (${rawLineContentShort})`);
+                            } else {
+                                // 평일 종료시간 초과 잔업만 현재 라인의 잔업으로 합산
+                                if (overtimeType === '평일 종료시간 초과') {
+                                    currentOvertime.overtime = Math.max(currentOvertime.overtime, lineOvertimeMinutes); // 더 큰 값으로 갱신
+                                    currentOvertime.types.add(overtimeType + ` (${rawLineContentShort})`);
+                                }
+                            }
                         });
                     }
                 }
@@ -482,20 +503,22 @@
                         !workerAbsenceInfo.get(worker).full.has(currentDate) && 
                         !workerAbsenceInfo.get(worker).half.has(currentDate)) {
                         
-                        const currentOvertime = tempDailyOvertimeForWorkers.get(worker);
-                        const additionalOvertimeForDuplicate = (count - 1) * 2 * 60; // 첫 등장은 기본 근무, 두 번째부터 2시간씩
+                        const currentOvertimeData = tempDailyOvertimeForWorkers.get(worker);
+                        
+                        // 현재 날짜에 이미 종료시간 초과로 잔업이 기록되어 있다면 (즉, currentOvertimeData.overtime > 0),
+                        // 중복 작업으로 인한 2시간은 추가하지 않음. (OR 조건)
+                        // 단, '평일 중복 작업' 타입은 상세 내역에 추가
+                        const hasEndTimeOvertime = currentOvertimeData.overtime > 0 && Array.from(currentOvertimeData.types).some(type => type.includes('평일 종료시간 초과'));
 
-                        // 종료시간 초과 잔업과 중복 작업 잔업 중 더 큰 값을 선택하거나, 중복 작업 잔업이 없을 경우 2시간 추가
-                        if (additionalOvertimeForDuplicate > 0) {
-                             if (!currentOvertime.types.has('평일 종료시간 초과')) { // 종료시간 초과 잔업이 없는 경우만 중복 작업 잔업 추가
-                                currentOvertime.overtime = Math.max(currentOvertime.overtime, 2 * 60); // 2시간 상한
-                                currentOvertime.types.add(`평일 중복 작업 (${count}회 작업 배정)`);
-                            }
+                        if (!hasEndTimeOvertime) { // 종료시간 초과 잔업이 없는 경우에만 중복 작업 잔업 추가 고려
+                            const additionalOvertimeForDuplicate = 2 * 60; // 중복 작업은 고정 2시간
+                            currentOvertimeData.overtime = Math.max(currentOvertimeData.overtime, additionalOvertimeForDuplicate); // 기존 값과 2시간 중 큰 값
+                            currentOvertimeData.types.add(`평일 중복 작업 (${count}회 작업 배정)`);
                         }
                     }
                 });
             }
-
+            
             // tempDailyOvertimeForWorkers에 기록된 최종 일일 잔업을 workerDetailedOvertime과 workerWeeklyOvertimeSum에 반영
             tempDailyOvertimeForWorkers.forEach((data, worker) => {
                 if (data.overtime > 0) {
@@ -503,15 +526,32 @@
                     if (!workerDailyData.has(currentDate)) {
                         workerDailyData.set(currentDate, []);
                     }
-                    // types Set에 기록된 모든 상세 내역을 추가 (중복 방지, 2시간 상한은 이미 위에서 반영됨)
+                    
+                    // 상세 내역 추가 (Set에 기록된 모든 상세 내역을 추가)
                     data.types.forEach(typeDesc => {
-                        const type = typeDesc.split(' (')[0]; // 타입만 추출
-                        const description = typeDesc.substring(type.length + 2, typeDesc.length - 1); // 괄호 안 내용 추출
-                        workerDailyData.get(currentDate).push({
-                            type: type,
-                            minutes: (type === '주말 작업') ? 5 * 60 : Math.min(data.overtime, 2 * 60), // 주말은 5시간, 평일은 2시간 상한
-                            description: description
-                        });
+                        const type = typeDesc.split(' (')[0]; 
+                        const descriptionMatch = typeDesc.match(/\((.*)\)/);
+                        const description = descriptionMatch ? descriptionMatch[1] : '';
+
+                        let detailMinutes = data.overtime; // 기본은 계산된 overtime
+                        if (type === '평일 중복 작업') {
+                            detailMinutes = 2 * 60; // 평일 중복 작업은 2시간으로 고정
+                        } else if (type === '주말 작업') {
+                             detailMinutes = 5 * 60; // 주말 작업은 5시간으로 고정
+                        }
+
+                        // 해당 날짜에 동일 타입의 잔업이 이미 추가되었는지 확인하여 중복 방지
+                        const isDuplicateEntry = workerDailyData.get(currentDate).some(entry => 
+                            entry.type === type && entry.minutes === detailMinutes && entry.description === description
+                        );
+                        
+                        if (!isDuplicateEntry) {
+                            workerDailyData.get(currentDate).push({
+                                type: type,
+                                minutes: detailMinutes,
+                                description: description
+                            });
+                        }
                     });
 
                     // 총 잔업 합산 (여기서는 중복 고려 없이 단순히 합산)
@@ -522,9 +562,12 @@
                     } else {
                         finalDailyOvertime = Math.min(data.overtime, 2 * 60); // 평일 잔업은 2시간 상한
                     }
-                    workerWeeklyOvertimeSum.set(worker, workerWeeklyOvertimeSum.get(worker) + finalDailyOvertime);
+                    // 이미 추가된 잔업이 있다면 갱신, 없다면 새로 설정
+                    const existingSum = workerWeeklyOvertimeSum.get(worker);
+                    workerWeeklyOvertimeSum.set(worker, existingSum + finalDailyOvertime);
                 }
             });
+
 
             // 미배정 직원 계산 (연차/반차/교육자 및 실제 작업에 참여한 사람 모두 제외)
             const unassigned = allWorkers.filter(worker =>
@@ -713,7 +756,7 @@
         detailsList.innerHTML = ''; // 기존 목록 초기화
 
         const workerData = workerDetailedOvertime.get(workerName);
-        const workerInfo = workerAbsenceInfo.get(workerName); // 연차/반차 정보 가져오기
+        const workerInfo = workerAbsenceInfo.get(workerName); // 연차/반차 정보 가져오기 (전역 변수 사용)
 
         if (workerData && workerData.size > 0) {
             // 날짜별로 정렬
@@ -725,29 +768,33 @@
 
             sortedDates.forEach(date => {
                 const dailyOvertimeEntries = workerData.get(date);
-                if (dailyOvertimeEntries && dailyOvertimeEntries.length > 0) { // 해당 날짜에 잔업 내역이 있는지 확인
-                    const dateHeader = document.createElement('li');
-                    dateHeader.style.fontWeight = 'bold';
-                    dateHeader.style.marginTop = '10px';
-                    dateHeader.style.color = '#007bff';
-                    dateHeader.textContent = date;
-                    detailsList.appendChild(dateHeader);
+                // 해당 날짜에 연차/반차 정보가 있다면 먼저 표시
+                let absenceDetailText = [];
+                if (workerInfo.full.has(date)) {
+                    absenceDetailText.push(`(연차/교육 등: 8시간 차감)`);
+                }
+                if (workerInfo.half.has(date)) {
+                    absenceDetailText.push(`(반차 등: 4시간 차감)`);
+                }
+                if (absenceDetailText.length > 0) {
+                    const absenceItem = document.createElement('li');
+                    absenceItem.style.fontStyle = 'italic';
+                    absenceItem.style.color = '#6c757d';
+                    absenceItem.textContent = `${date} ${absenceDetailText.join('; ')}`; // 날짜와 함께 표시
+                    detailsList.appendChild(absenceItem);
+                }
 
-                    // 해당 날짜에 연차/반차 정보가 있다면 표시
-                    let absenceDetailText = [];
-                    if (workerInfo.full.has(date)) {
-                        absenceDetailText.push(`(연차/교육 등: 8시간 차감)`);
+                if (dailyOvertimeEntries && dailyOvertimeEntries.length > 0) { // 해당 날짜에 잔업 내역이 있는지 확인
+                    // 날짜 헤더를 연차/반차 다음에 표시 (중복 방지)
+                    if (absenceDetailText.length === 0) { // 연차/반차 정보가 없는 경우에만 날짜 헤더 추가
+                        const dateHeader = document.createElement('li');
+                        dateHeader.style.fontWeight = 'bold';
+                        dateHeader.style.marginTop = '10px';
+                        dateHeader.style.color = '#007bff';
+                        dateHeader.textContent = date;
+                        detailsList.appendChild(dateHeader);
                     }
-                    if (workerInfo.half.has(date)) {
-                        absenceDetailText.push(`(반차 등: 4시간 차감)`);
-                    }
-                    if (absenceDetailText.length > 0) {
-                        const absenceItem = document.createElement('li');
-                        absenceItem.style.fontStyle = 'italic';
-                        absenceItem.style.color = '#6c757d';
-                        absenceItem.textContent = absenceDetailText.join('; ');
-                        detailsList.appendChild(absenceItem);
-                    }
+                    
 
                     dailyOvertimeEntries.forEach(entry => {
                         const item = document.createElement('li');
@@ -782,6 +829,11 @@
         document.getElementById('results').style.display = 'none';
         document.getElementById('results').innerHTML = '<h2>일별 미배정 직원</h2>';
         workerDetailedOvertime.clear(); // 상세 잔업 데이터도 초기화
+        // workerAbsenceInfo는 전역이므로 clear()만 호출
+        allWorkers.forEach(worker => {
+            workerAbsenceInfo.get(worker).full.clear();
+            workerAbsenceInfo.get(worker).half.clear();
+        });
     }
     </script>
 </body>
