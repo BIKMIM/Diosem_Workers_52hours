@@ -292,7 +292,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>일별 미배정 직원</h2>
             </div>
-        <div class="version">Version: 1.55 주52시간 적용 (연차/반차/교육 구분)</div>
+        <div class="version">Version: 1.56 주52시간 적용 (교육 정규근무 간주)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -380,23 +380,34 @@
         }
 
         // --- 날짜 섹션 파싱 ---
-        // fullAbsence: 연차|민방위|
+        // fullAbsence: 연차|민방위
         // halfAbsence: 반차|오전반차|오후반차
         // education: 교육
-        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|민방위|):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:반차|오전반차|오후반차):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:교육):\s*([가-힣\s,\/]+))*)?/g;
+        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(연차|민방위):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(반차|오전반차|오후반차):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(교육):\s*([가-힣\s,\/]+))*)?/g;
         const dateMatches = Array.from(workInput.matchAll(datePattern));
 
         const dateSections = [];
         for (let i = 0; i < dateMatches.length; i++) {
             const match = dateMatches[i];
             const dateText = match[1];
-            const fullAbsenceInfo = match[2] || '';
-            const halfAbsenceInfo = match[3] || '';
-            const educationInfo = match[4] || ''; // 교육 정보 추가
+            
+            // 각 매칭 그룹이 정확히 어떤 키워드에 해당하는지 확인 및 이름 목록 파싱
+            const fullAbsenceNames = match[3] || ''; // 연차, 민방위 뒤 이름
+            const halfAbsenceNames = match[5] || ''; // 반차 등 뒤 이름
+            const educationNames = match[7] || '';     // 교육 뒤 이름
+
             const startIndex = match.index + match[0].length;
             const endIndex = (i + 1 < dateMatches.length) ? dateMatches[i + 1].index : workInput.length;
             const sectionContent = workInput.substring(startIndex, endIndex).trim();
-            dateSections.push({ date: dateText, content: sectionContent, fullAbsenceInfo: fullAbsenceInfo, halfAbsenceInfo: halfAbsenceInfo, educationInfo: educationInfo });
+            
+            // 각 타입별로 파싱된 정보를 dateSections에 추가
+            dateSections.push({
+                date: dateText,
+                content: sectionContent,
+                fullAbsenceInfo: fullAbsenceNames, // 이름만 넘김
+                halfAbsenceInfo: halfAbsenceNames, // 이름만 넘김
+                educationInfo: educationNames      // 이름만 넘김
+            });
         }
 
         if (dateSections.length === 0) {
@@ -412,23 +423,23 @@
             const currentDayWorkerLineCounts = new Map(allWorkers.map(worker => [worker, 0])); // 해당 날짜의 직원별 작업 라인 등장 횟수 (미배정 인원 계산용)
             
             // 평일 하루 잔업 시간 계산을 위한 임시 맵. 각 작업자별로 그 날 발생하는 잔업을 임시 저장
-            // 이 맵에 저장된 최종 overtime 값이 그 날의 최대 잔업 시간 (평일 2시간, 주말 5시간)이 됩니다.
             const tempDailyOvertimeForWorkers = new Map(allWorkers.map(worker => [worker, { overtime: 0, details: [] }]));
 
 
             // 1. 연차/반차/교육 등 인원 처리: 미배정 및 잔업 계산에 영향을 줌
             // 교육은 근무 시간에서 제외하지 않으므로, 작업자 배정 시에도 제외하지 않습니다.
+            // fullAbsenceInfo, halfAbsenceInfo, educationInfo는 이미 dateSections.push에서 파싱된 이름 목록입니다.
             if (section.fullAbsenceInfo) {
-                const fullAbsenceNames = section.fullAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                fullAbsenceNames.forEach(name => {
+                const names = section.fullAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
+                names.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).full.add(currentDate);
                     }
                 });
             }
             if (section.halfAbsenceInfo) {
-                const halfAbsenceNames = section.halfAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                halfAbsenceNames.forEach(name => {
+                const names = section.halfAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
+                names.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).half.add(currentDate);
                     }
@@ -436,8 +447,8 @@
             }
             // 교육 인원은 차감되지 않고 근무하는 것으로 간주
             if (section.educationInfo) {
-                const educationNames = section.educationInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                educationNames.forEach(name => {
+                const names = section.educationInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
+                names.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).education.add(currentDate);
                     }
@@ -518,7 +529,7 @@
                                 });
                             } else { // 평일
                                 // 평일 종료시간 초과 잔업은 2시간 상한
-                                if (overtimeType === '평일 잔업 시간') { // 문구 변경에 따른 조건 변경
+                                if (overtimeType === '평일 잔업 시간') { 
                                     // 기존 잔업 시간과 현재 라인에서 발생한 잔업 시간 중 더 큰 값을 기록
                                     // 단, 이미 2시간 이상 잔업이 기록되어 있다면 갱신하지 않음
                                     currentDailyOvertimeData.overtime = Math.max(currentDailyOvertimeData.overtime, Math.min(lineOvertimeMinutes, 2 * 60)); 
@@ -538,7 +549,7 @@
                     }
                 }
             });
-
+            
             // tempDailyOvertimeForWorkers에 기록된 최종 일일 잔업을 workerDetailedOvertime과 workerWeeklyOvertimeSum에 반영
             tempDailyOvertimeForWorkers.forEach((data, worker) => {
                 if (data.overtime > 0) {
@@ -573,7 +584,8 @@
             const unassigned = allWorkers.filter(worker =>
                 !dailyAssignedWorkers.has(worker) && 
                 !workerAbsenceInfo.get(worker).full.has(currentDate) &&
-                !workerAbsenceInfo.get(worker).half.has(currentDate)
+                !workerAbsenceInfo.get(worker).half.has(currentDate) &&
+                !workerAbsenceInfo.get(worker).education.has(currentDate) // 교육도 이제 근무로 간주하여 미배정에서 제외
             ).sort((a, b) => allWorkers.indexOf(a) - allWorkers.indexOf(b));
             
             allDailyUnassigned[currentDate] = unassigned;
@@ -591,25 +603,26 @@
             dateSection.innerHTML = `<h3>${date}</h3>`;
 
             // 연차/반차/교육 등 정보 표시
-            const absentWorkersTodayFull = Array.from(workerAbsenceInfo.entries())
+            // 각 유형별로 파싱된 정보 (이름 목록)를 가져와서 표시
+            const fullAbsenceNamesForDisplay = Array.from(workerAbsenceInfo.entries())
                                         .filter(([, info]) => info.full.has(date))
                                         .map(([worker]) => worker);
-            const absentWorkersTodayHalf = Array.from(workerAbsenceInfo.entries())
+            const halfAbsenceNamesForDisplay = Array.from(workerAbsenceInfo.entries())
                                         .filter(([, info]) => info.half.has(date))
                                         .map(([worker]) => worker);
-            const absentWorkersTodayEducation = Array.from(workerAbsenceInfo.entries())
+            const educationNamesForDisplay = Array.from(workerAbsenceInfo.entries())
                                         .filter(([, info]) => info.education.has(date))
                                         .map(([worker]) => worker);
             
             let absenceText = [];
-            if (absentWorkersTodayFull.length > 0) {
-                absenceText.push(`연차/민방위/: ${absentWorkersTodayFull.join(', ')} (8시간 차감)`);
+            if (fullAbsenceNamesForDisplay.length > 0) {
+                absenceText.push(`연차/민방위: ${fullAbsenceNamesForDisplay.join(', ')} (8시간 차감)`); // 문구 수정
             }
-            if (absentWorkersTodayHalf.length > 0) {
-                absenceText.push(`반차/오전반차/오후반차: ${absentWorkersTodayHalf.join(', ')} (4시간 차감)`);
+            if (halfAbsenceNamesForDisplay.length > 0) {
+                absenceText.push(`반차/오전반차/오후반차: ${halfAbsenceNamesForDisplay.join(', ')} (4시간 차감)`);
             }
-            if (absentWorkersTodayEducation.length > 0) {
-                absenceText.push(`교육: ${absentWorkersTodayEducation.join(', ')} (근무 간주)`);
+            if (educationNamesForDisplay.length > 0) {
+                absenceText.push(`교육: ${educationNamesForDisplay.join(', ')} (근무 간주)`);
             }
 
             if (absenceText.length > 0) {
@@ -689,7 +702,7 @@
 
                     if (!isWeekend) { // 평일만 기본 근무 시간 계산
                         if (isFullAbsence) {
-                            // 연차/민방위/ 등으로 8시간 전부 쉬는 경우: 기본 근무 시간 추가 안 함
+                            // 연차/민방위 등으로 8시간 전부 쉬는 경우: 기본 근무 시간 추가 안 함
                         } else if (isHalfAbsence) {
                             // 반차로 4시간 쉬는 경우: 4시간만 기본 근무 시간으로 추가
                             totalBaseWorkingMinutes += 4 * 60;
@@ -796,20 +809,20 @@
                 // 해당 날짜에 연차/반차/교육 정보가 있다면 표시
                 let absenceDetailTexts = [];
                 if (workerInfo.full.has(date)) {
-                    absenceDetailTexts.push(`연차/민방위/: <span class="overtime-time-negative">-8시간</span>`);
+                    absenceDetailTexts.push(`연차/민방위: <span class="overtime-time-negative">-8시간</span>`); // 문구 수정
                 }
                 if (workerInfo.half.has(date)) {
                     absenceDetailTexts.push(`반차/오전반차/오후반차: <span class="overtime-time-negative">-4시간</span>`);
                 }
                 if (workerInfo.education.has(date)) {
-                    absenceDetailTexts.push(`교육: 근무 간주`); // 교육은 차감 없음
+                    absenceDetailTexts.push(`교육: 근무 간주`);
                 }
 
                 if (absenceDetailTexts.length > 0) {
                     const absenceItem = document.createElement('li');
                     absenceItem.style.fontStyle = 'italic';
                     absenceItem.style.color = '#6c757d'; 
-                    absenceItem.innerHTML = absenceDetailTexts.join('; ');
+                    absenceItem.innerHTML = absenceDetailTexts.join('<br>'); // 줄바꿈
                     detailsList.appendChild(absenceItem);
                 }
 
