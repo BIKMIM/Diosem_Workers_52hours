@@ -316,7 +316,7 @@
     const workerDetailedOvertime = new Map();
 
     // 직원별 연차/교육일 기록 (전역으로 이동)
-    // full: 8시간 차감 (연차, 민방위, 병가, 출장, 훈련)
+    // full: 8시간 차감 (연차, 민방위)
     // half: 4시간 차감 (반차, 오전반차, 오후반차)
     // education: 교육 (차감 없음)
     const workerAbsenceInfo = new Map(allWorkers.map(worker => [worker, { full: new Set(), half: new Set(), education: new Set() }]));
@@ -380,10 +380,10 @@
         }
 
         // --- 날짜 섹션 파싱 ---
-        // fullAbsence: 연차|민방위|병가|출장|훈련
+        // fullAbsence: 연차|민방위|
         // halfAbsence: 반차|오전반차|오후반차
         // education: 교육
-        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|민방위|병가|출장|훈련):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:반차|오전반차|오후반차):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:교육):\s*([가-힣\s,\/]+))*)?/g;
+        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|민방위|):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:반차|오전반차|오후반차):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:교육):\s*([가-힣\s,\/]+))*)?/g;
         const dateMatches = Array.from(workInput.matchAll(datePattern));
 
         const dateSections = [];
@@ -603,7 +603,7 @@
             
             let absenceText = [];
             if (absentWorkersTodayFull.length > 0) {
-                absenceText.push(`연차/민방위/병가/출장/훈련: ${absentWorkersTodayFull.join(', ')} (8시간 차감)`);
+                absenceText.push(`연차/민방위/: ${absentWorkersTodayFull.join(', ')} (8시간 차감)`);
             }
             if (absentWorkersTodayHalf.length > 0) {
                 absenceText.push(`반차/오전반차/오후반차: ${absentWorkersTodayHalf.join(', ')} (4시간 차감)`);
@@ -689,7 +689,7 @@
 
                     if (!isWeekend) { // 평일만 기본 근무 시간 계산
                         if (isFullAbsence) {
-                            // 연차/민방위/병가/출장/훈련 등으로 8시간 전부 쉬는 경우: 기본 근무 시간 추가 안 함
+                            // 연차/민방위/ 등으로 8시간 전부 쉬는 경우: 기본 근무 시간 추가 안 함
                         } else if (isHalfAbsence) {
                             // 반차로 4시간 쉬는 경우: 4시간만 기본 근무 시간으로 추가
                             totalBaseWorkingMinutes += 4 * 60;
@@ -796,7 +796,7 @@
                 // 해당 날짜에 연차/반차/교육 정보가 있다면 표시
                 let absenceDetailTexts = [];
                 if (workerInfo.full.has(date)) {
-                    absenceDetailTexts.push(`연차/민방위/병가/출장/훈련: <span class="overtime-time-negative">-8시간</span>`);
+                    absenceDetailTexts.push(`연차/민방위/: <span class="overtime-time-negative">-8시간</span>`);
                 }
                 if (workerInfo.half.has(date)) {
                     absenceDetailTexts.push(`반차/오전반차/오후반차: <span class="overtime-time-negative">-4시간</span>`);
