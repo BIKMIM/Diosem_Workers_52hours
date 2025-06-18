@@ -283,7 +283,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>일별 미배정 직원</h2>
             </div>
-        <div class="version">Version: 1.46 주52시간 적용 (연차/반차 계산 포함)</div>
+        <div class="version">Version: 1.47 주52시간 적용 (연차/반차 계산 포함)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -409,27 +409,24 @@
             lines.forEach(line => {
                 if (line.trim().startsWith('■')) {
                     const lineAssignedWorkers = new Set(); // 현재 작업 라인에 포함된 (연차/반차 제외) 직원들
+                    const namesToProcessInLine = new Set(); // 이 라인에서 추출된 중복 제거된 이름들
 
                     // 작업 라인에서 이름 추출
                     const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장님|팀장)?/g;
                     let match;
-                    const namesFoundInLine = []; // 현재 라인에서 찾은 모든 이름 (중복 포함)
                     while ((match = nameRegex.exec(line)) !== null) {
-                        namesFoundInLine.push(match[0]);
+                        namesToProcessInLine.add(match[0]);
                     }
 
-                    // 슬래시 뒤 인원 추가
+                    // 슬래시 뒤 인원 추가 (Set을 사용하여 자동으로 중복 제거)
                     const slashMatch = line.match(/\/\s*([가-힣\s,]+)(?:\s*\(현업PO_UR\d+완료\))?/);
                     if (slashMatch) {
                         const slashNames = slashMatch[1].split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                        // namesFoundInLine.push(...slashNames); // 슬래시 뒤 이름도 처리 대상에 포함
-                        // 슬래시 뒤의 이름은 이미 텍스트에 포함되어 있기 때문에 중복으로 추가될 수 있습니다.
-                        // 따라서, 이미 namesFoundInLine에 있는 이름은 다시 추가하지 않도록 Set을 사용하여 중복을 방지하는 것이 좋습니다.
-                        slashNames.forEach(name => namesFoundInLine.push(name));
+                        slashNames.forEach(name => namesToProcessInLine.add(name));
                     }
 
-                    // 이름들을 필터링하고 카운트
-                    namesFoundInLine.forEach(rawName => {
+                    // 최종 처리할 이름들 (직책 제거 및 유효성 검사)
+                    namesToProcessInLine.forEach(rawName => {
                         const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님|팀장)$/, '').trim();
                         if (allWorkers.includes(cleanName) && 
                             !workerAbsenceInfo.get(cleanName).full.has(currentDate) && 
@@ -486,6 +483,7 @@
             // 평일: 같은 요일에 같은 이름이 2번 이상 나오면 횟수당 2시간 추가 근무 (연차/반차/교육자 제외)
             if (!isWeekend) {
                 currentDayWorkerLineCounts.forEach((count, worker) => {
+                    // count가 1인 경우는 이미 기본 근무로 처리되므로, 2 이상인 경우에만 추가 잔업을 부여
                     if (count >= 2 && 
                         !workerAbsenceInfo.get(worker).full.has(currentDate) && 
                         !workerAbsenceInfo.get(worker).half.has(currentDate)) {
