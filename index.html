@@ -251,7 +251,7 @@
         const workerAbsenceDays = new Map(allWorkers.map(worker => [worker, new Set()])); // 직원별 연차/교육일 기록 (해당 날짜에 작업 배정 및 잔업에서 제외)
 
         // 날짜와 요일을 구분하기 위한 정규식 (연차/교육 정보 포함)
-        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|교육|민방위|출장|훈련):\s*([가-힣\s,\/]+))*)?/g;
+        const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|휴가|병가|교육|민방위|출장|훈련):\s*([가-힣\s,\/]+))*)?/g;
         
         const dateMatches = Array.from(workInput.matchAll(datePattern));
 
@@ -295,7 +295,7 @@
                     const lineAssignedWorkers = new Set(); // 현재 라인에 배정된 직원
 
                     // 정규식을 사용하여 이름들을 모두 찾음 (프로, 기정 등 직책 제외)
-                    const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장님|팀장)?/g;
+                    const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장|과장|팀장)?/g;
                     let nameMatch;
                     const namesInLine = [];
                     while ((nameMatch = nameRegex.exec(line)) !== null) {
@@ -304,7 +304,7 @@
 
                     // 이름 추출 및 dailyAssignedWorkers, currentDayWorkerActivityCounts 업데이트
                     namesInLine.forEach(rawName => {
-                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님|팀장)$/, '').trim();
+                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장|과장|팀장)$/, '').trim();
                         if (allWorkers.includes(cleanName) && !workerAbsenceDays.get(cleanName).has(currentDate)) {
                             lineAssignedWorkers.add(cleanName); // 이 라인에 배정된 직원
                             dailyAssignedWorkers.add(cleanName); // 오늘 배정된 총 직원
