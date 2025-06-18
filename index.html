@@ -283,7 +283,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>일별 미배정 직원</h2>
             </div>
-        <div class="version">Version: 1.44 주52시간 적용 (연차/반차 계산 포함)</div>
+        <div class="version">Version: 1.45 주52시간 적용 (연차/반차 계산 포함)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -335,36 +335,35 @@
     }
 
     function processWorkData() {
+        // --- 초기화 및 기본 검사 ---
         const workInput = document.getElementById('workInput').value;
         const resultsDiv = document.getElementById('results');
         resultsDiv.innerHTML = '<h2>일별 미배정 직원</h2>'; // 이전 결과 초기화
         resultsDiv.style.display = 'block'; // 결과 섹션 표시
 
-        // workerDetailedOvertime 및 workerWeeklyOvertime 초기화
+        // 잔업 관련 데이터 초기화
         workerDetailedOvertime.clear();
         allWorkers.forEach(worker => {
-            workerDetailedOvertime.set(worker, new Map()); // 작업자별 {날짜: [{유형, 시간, 라인}]}, 총 잔업시간은 별도 계산
+            workerDetailedOvertime.set(worker, new Map());
         });
-        const workerWeeklyOvertimeSum = new Map(allWorkers.map(worker => [worker, 0])); // 주간 총 잔업 시간 (분 단위)
-
-        const workerAbsenceInfo = new Map(allWorkers.map(worker => [worker, { full: new Set(), half: new Set() }])); // 직원별 연차/교육일 기록
+        const workerWeeklyOvertimeSum = new Map(allWorkers.map(worker => [worker, 0]));
+        const workerAbsenceInfo = new Map(allWorkers.map(worker => [worker, { full: new Set(), half: new Set() }]));
 
         if (!workInput.trim()) {
             resultsDiv.innerHTML += '<p class="empty-message">입력된 작업 내용이 없습니다.</p>';
             return;
         }
 
-        // 날짜와 요일을 구분하기 위한 정규식 (연차/교육/반차 등 정보 포함)
+        // --- 날짜 섹션 파싱 ---
         const datePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>(?:(?:\s*(?:연차|교육|민방위|병가|출장|훈련):\s*([가-힣\s,\/]+))*)?(?:(?:\s*(?:반차|오전반차|오후반차):\s*([가-힣\s,\/]+))*)?/g;
-        
         const dateMatches = Array.from(workInput.matchAll(datePattern));
 
         const dateSections = [];
         for (let i = 0; i < dateMatches.length; i++) {
             const match = dateMatches[i];
             const dateText = match[1];
-            const fullAbsenceInfo = match[2] || ''; // 연차, 교육, 병가 등 8시간 제외
-            const halfAbsenceInfo = match[3] || ''; // 반차, 오전반차, 오후반차 등 4시간 제외
+            const fullAbsenceInfo = match[2] || '';
+            const halfAbsenceInfo = match[3] || '';
             const startIndex = match.index + match[0].length;
             const endIndex = (i + 1 < dateMatches.length) ? dateMatches[i + 1].index : workInput.length;
             const sectionContent = workInput.substring(startIndex, endIndex).trim();
@@ -376,18 +375,19 @@
             return;
         }
 
+        // --- 각 날짜 섹션 처리 ---
         dateSections.forEach(section => {
             const currentDate = section.date;
             const sectionContent = section.content;
-            let dailyAssignedWorkers = new Set(); // 해당 날짜에 작업에 배정된 직원 (연차/교육/반차 제외)
-            const currentDayWorkerActivityCounts = new Map(allWorkers.map(worker => [worker, 0])); // 해당 날짜의 직원별 작업 라인 등장 횟수 (잔업 계산용)
+            let dailyAssignedWorkers = new Set(); // 해당 날짜에 작업에 배정된 최종 직원 (연차/반차 제외)
+            const currentDayWorkerLineCounts = new Map(allWorkers.map(worker => [worker, 0])); // 해당 날짜의 직원별 작업 라인 등장 횟수 (중복 잔업 계산용)
 
-            // 1. 연차/교육/반차 등 인원 처리: 이들은 해당 날짜의 작업 배정 및 특정 잔업 계산에서 제외
+            // 1. 연차/반차 등 인원 처리: 미배정 및 잔업 계산에 영향을 줌
             if (section.fullAbsenceInfo) {
                 const fullAbsenceNames = section.fullAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
                 fullAbsenceNames.forEach(name => {
                     if (allWorkers.includes(name)) {
-                        workerAbsenceInfo.get(name).full.add(currentDate); // 8시간 제외 일자로 기록
+                        workerAbsenceInfo.get(name).full.add(currentDate);
                     }
                 });
             }
@@ -395,7 +395,7 @@
                 const halfAbsenceNames = section.halfAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
                 halfAbsenceNames.forEach(name => {
                     if (allWorkers.includes(name)) {
-                        workerAbsenceInfo.get(name).half.add(currentDate); // 4시간 제외 일자로 기록
+                        workerAbsenceInfo.get(name).half.add(currentDate);
                     }
                 });
             }
@@ -405,53 +405,42 @@
 
             lines.forEach(line => {
                 if (line.trim().startsWith('■')) {
-                    const lineAssignedWorkers = new Set(); // 현재 라인에 배정된 직원
+                    const lineAssignedWorkers = new Set(); // 현재 작업 라인에 포함된 (연차/반차 제외) 직원들
 
-                    // 정규식을 사용하여 이름들을 모두 찾음 (프로, 기정 등 직책 제외)
+                    // 작업 라인에서 이름 추출
                     const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장님|팀장)?/g;
-                    let nameMatch;
-                    const namesInLineRaw = []; // 라인에서 발견된 모든 원본 이름 (중복 포함)
-                    while ((nameMatch = nameRegex.exec(line)) !== null) {
-                        namesInLineRaw.push(nameMatch[0]);
+                    let match;
+                    const namesFoundInLine = []; // 현재 라인에서 찾은 모든 이름 (중복 포함)
+                    while ((match = nameRegex.exec(line)) !== null) {
+                        namesFoundInLine.push(match[0]);
                     }
 
-                    // 이름 추출 및 dailyAssignedWorkers, currentDayWorkerActivityCounts 업데이트
-                    namesInLineRaw.forEach(rawName => {
-                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님|팀장)$/, '').trim();
-                        // 연차/반차가 아닌 경우에만 작업자로 간주하고 카운트
-                        if (allWorkers.includes(cleanName) && 
-                            !workerAbsenceInfo.get(cleanName).full.has(currentDate) && 
-                            !workerAbsenceInfo.get(cleanName).half.has(currentDate)) { // 반차도 작업 제외
-                            
-                            lineAssignedWorkers.add(cleanName); // 이 라인에 배정된 직원
-                            dailyAssignedWorkers.add(cleanName); // 오늘 배정된 총 직원
-                            currentDayWorkerActivityCounts.set(cleanName, currentDayWorkerActivityCounts.get(cleanName) + 1);
-                        }
-                    });
-
-                    // 슬래시 뒤 인원 추가 (이들은 명시적인 작업자이므로 잔업 계산에 포함)
+                    // 슬래시 뒤 인원 추가
                     const slashMatch = line.match(/\/\s*([가-힣\s,]+)(?:\s*\(현업PO_UR\d+완료\))?/);
                     if (slashMatch) {
                         const slashNames = slashMatch[1].split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                        slashNames.forEach(name => {
-                            // 연차/반차가 아닌 경우에만 작업자로 간주하고 카운트
-                            if (allWorkers.includes(name) && 
-                                !workerAbsenceInfo.get(name).full.has(currentDate) && 
-                                !workerAbsenceInfo.get(name).half.has(currentDate)) { // 반차도 작업 제외
-                                
-                                lineAssignedWorkers.add(name);
-                                dailyAssignedWorkers.add(name);
-                                currentDayWorkerActivityCounts.set(name, currentDayWorkerActivityCounts.get(name) + 1); // 슬래시 뒤 이름도 카운트
-                            }
-                        });
+                        namesFoundInLine.push(...slashNames); // 슬래시 뒤 이름도 처리 대상에 포함
                     }
+
+                    // 이름들을 필터링하고 카운트
+                    namesFoundInLine.forEach(rawName => {
+                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님|팀장)$/, '').trim();
+                        if (allWorkers.includes(cleanName) && 
+                            !workerAbsenceInfo.get(cleanName).full.has(currentDate) && 
+                            !workerAbsenceInfo.get(cleanName).half.has(currentDate)) {
+                            
+                            lineAssignedWorkers.add(cleanName); // 이 라인에 작업이 배정된 직원 (연차/반차 제외)
+                            dailyAssignedWorkers.add(cleanName); // 오늘 전체 작업에 배정된 직원 (미배정 계산용)
+                            currentDayWorkerLineCounts.set(cleanName, currentDayWorkerLineCounts.get(cleanName) + 1); // 해당 날짜의 라인별 등장 횟수
+                        }
+                    });
 
                     let lineOvertimeMinutes = 0;
                     let overtimeType = '';
-                    let rawLineContent = line.trim().substring(0, Math.min(line.trim().length, 50)) + (line.trim().length > 50 ? '...' : '');
+                    const rawLineContentShort = line.trim().substring(0, Math.min(line.trim().length, 50)) + (line.trim().length > 50 ? '...' : '');
 
                     if (isWeekend) {
-                        // 주말 작업은 해당 라인에 언급된 모든 작업자에게 5시간 (300분) 잔업 추가
+                        // 주말 작업은 무조건 5시간 (300분) 잔업
                         lineOvertimeMinutes = 5 * 60;
                         overtimeType = '주말 작업';
                     } else {
@@ -469,7 +458,7 @@
                         }
                     }
 
-                    // 이 라인에서 발생한 잔업 시간을 해당 라인의 모든 배정된 직원에게 추가 및 상세 기록
+                    // 이 라인에서 발생한 잔업 시간을 해당 라인의 모든 (연차/반차 제외) 배정된 직원에게 추가 및 상세 기록
                     if (lineOvertimeMinutes > 0) {
                         lineAssignedWorkers.forEach(worker => {
                             const workerDailyData = workerDetailedOvertime.get(worker);
@@ -479,8 +468,9 @@
                             workerDailyData.get(currentDate).push({
                                 type: overtimeType,
                                 minutes: lineOvertimeMinutes,
-                                description: rawLineContent
+                                description: rawLineContentShort
                             });
+                            // 총 잔업 합산
                             workerWeeklyOvertimeSum.set(worker, workerWeeklyOvertimeSum.get(worker) + lineOvertimeMinutes);
                         });
                     }
@@ -489,8 +479,7 @@
 
             // 평일: 같은 요일에 같은 이름이 2번 이상 나오면 횟수당 2시간 추가 근무 (연차/반차/교육자 제외)
             if (!isWeekend) {
-                currentDayWorkerActivityCounts.forEach((count, worker) => {
-                    // 연차/반차/교육자가 아닌 경우에만 중복 근무 시간 계산
+                currentDayWorkerLineCounts.forEach((count, worker) => {
                     if (count >= 2 && 
                         !workerAbsenceInfo.get(worker).full.has(currentDate) && 
                         !workerAbsenceInfo.get(worker).half.has(currentDate)) {
@@ -507,6 +496,7 @@
                                 minutes: additionalOvertimeForDuplicate,
                                 description: `${count}회 작업 배정 (2시간씩 ${count - 1}회 추가)`
                             });
+                            // 총 잔업 합산
                             workerWeeklyOvertimeSum.set(worker, workerWeeklyOvertimeSum.get(worker) + additionalOvertimeForDuplicate);
                         }
                     }
@@ -520,13 +510,15 @@
                 !workerAbsenceInfo.get(worker).half.has(currentDate)
             ).sort((a, b) => allWorkers.indexOf(a) - allWorkers.indexOf(b));
             
-            allDailyUnassigned[currentDate] = unassigned;
+            allDailyUnassigned[currentDate] = unassigned; // 이 변수 선언 위치는 이미 올바름.
         });
 
         // ----------------- HTML 결과 표시 -----------------
 
         // 1. 일별 미배정 직원 표시
         let hasUnassignedResults = false;
+        // allDailyUnassigned는 processWorkData 함수 내에 선언되어 있으므로 문제가 없어야 함.
+        // 이 부분에 도달하기 전에 에러가 발생했다면, dateSections.forEach 내부의 다른 문제일 가능성
         for (const date in allDailyUnassigned) {
             hasUnassignedResults = true;
             const unassignedList = allDailyUnassigned[date];
@@ -613,31 +605,36 @@
 
             sortedOvertimeWorkers.forEach(([worker, rawTotalOvertimeMinutes]) => {
                 // 연차/반차로 인한 주 52시간 계산 시 기본 근무 시간 차감 로직
-                let totalActualWorkingMinutes = 0; // 이 주에 실제로 일한 시간 (기본 40시간 + 잔업)
-                let weeklyBaseHoursMinutes = 40 * 60; // 주 40시간 = 2400분
+                let totalBaseWorkingMinutes = 0; // 주간 기본 근무 시간 합산 (연차/반차 반영)
 
                 // 각 요일별로 기본 근무 8시간(주말 제외) 계산
                 dateSections.forEach(section => {
                     const currentDate = section.date;
                     const isWeekend = currentDate.includes('토요일') || currentDate.includes('일요일');
-                    if (!isWeekend) {
-                        // 연차/교육이 아닌 경우에만 8시간 추가
-                        if (!workerAbsenceInfo.get(worker).full.has(currentDate)) {
-                            // 반차인 경우 4시간만 추가
-                            if (workerAbsenceInfo.get(worker).half.has(currentDate)) {
-                                totalActualWorkingMinutes += 4 * 60;
-                            } else {
-                                totalActualWorkingMinutes += 8 * 60;
-                            }
+                    
+                    // 해당 날짜에 해당 작업자가 연차/반차를 사용했는지 확인
+                    const isFullAbsence = workerAbsenceInfo.get(worker).full.has(currentDate);
+                    const isHalfAbsence = workerAbsenceInfo.get(worker).half.has(currentDate);
+
+                    if (!isWeekend) { // 평일만 기본 근무 시간 계산
+                        if (isFullAbsence) {
+                            // 연차/교육 등으로 8시간 전부 쉬는 경우
+                            // totalBaseWorkingMinutes += 0; // 추가하지 않음
+                        } else if (isHalfAbsence) {
+                            // 반차로 4시간 쉬는 경우
+                            totalBaseWorkingMinutes += 4 * 60;
+                        } else {
+                            // 정상 근무하는 경우
+                            totalBaseWorkingMinutes += 8 * 60;
                         }
                     }
                 });
                 
-                // 실제로 일한 시간에 잔업을 합산
-                totalActualWorkingMinutes += rawTotalOvertimeMinutes;
+                // 총 근무 시간 = 기본 근무 시간 (연차/반차 반영) + 실제 발생한 잔업 시간
+                const totalActualWorkingMinutes = totalBaseWorkingMinutes + rawTotalOvertimeMinutes;
 
-                // 52시간 기준 초과 여부는 총 근무 가능 시간에서 총 근무 시간을 뺀 값으로 판단 (주 40시간 + 12시간 잔업)
-                const totalAllowedWorkingMinutes = 52 * 60; // 52시간 = 3120분
+                // 52시간 기준 (총 허용 근무 시간: 40시간 기본 + 12시간 잔업 = 52시간 = 3120분)
+                const totalAllowedWorkingMinutes = 52 * 60; 
 
                 const li = document.createElement('li');
                 li.style.marginBottom = '5px';
@@ -663,15 +660,15 @@
                     const exceedHours = Math.floor(exceedMinutes / 60);
                     const exceedMins = exceedMinutes % 60;
                     statusText = ` (52시간 초과: ${exceedHours}시간 ${exceedMins}분)`;
-                    li.style.borderColor = '#dc3545';
-                    li.style.color = '#dc3545';
+                    li.style.borderColor = '#dc3545'; // 경고색 테두리
+                    li.style.color = '#dc3545'; // 경고색 텍스트
                 } else {
                     const remainingMinutes = totalAllowedWorkingMinutes - totalActualWorkingMinutes;
                     const remainingHours = Math.floor(remainingMinutes / 60);
                     const remainingMins = remainingMinutes % 60;
                     statusText = ` (여유: ${remainingHours}시간 ${remainingMins}분)`;
-                    li.style.borderColor = '#28a745';
-                    li.style.color = '#2c3e50';
+                    li.style.borderColor = '#28a745'; // 정상색 테두리
+                    li.style.color = '#2c3e50'; // 기본 텍스트 색상
                 }
 
                 li.innerHTML = `<strong>${worker}</strong>: ${overtimeText}${statusText}`;
@@ -707,33 +704,41 @@
 
             sortedDates.forEach(date => {
                 const dailyOvertimeEntries = workerData.get(date);
-                const dateHeader = document.createElement('li');
-                dateHeader.style.fontWeight = 'bold';
-                dateHeader.style.marginTop = '10px';
-                dateHeader.style.color = '#007bff';
-                dateHeader.textContent = date;
-                detailsList.appendChild(dateHeader);
+                if (dailyOvertimeEntries.length > 0) { // 해당 날짜에 잔업 내역이 있는지 확인
+                    const dateHeader = document.createElement('li');
+                    dateHeader.style.fontWeight = 'bold';
+                    dateHeader.style.marginTop = '10px';
+                    dateHeader.style.color = '#007bff';
+                    dateHeader.textContent = date;
+                    detailsList.appendChild(dateHeader);
 
-                dailyOvertimeEntries.forEach(entry => {
-                    const item = document.createElement('li');
-                    const hours = Math.floor(entry.minutes / 60);
-                    const mins = entry.minutes % 60;
-                    let timeText = `${hours}시간`;
-                    if (mins > 0) timeText += ` ${mins}분`;
+                    dailyOvertimeEntries.forEach(entry => {
+                        const item = document.createElement('li');
+                        const hours = Math.floor(entry.minutes / 60);
+                        const mins = entry.minutes % 60;
+                        let timeText = `${hours}시간`;
+                        if (mins > 0) timeText += ` ${mins}분`;
 
-                    item.textContent = ` - ${entry.type}: ${timeText} (${entry.description})`;
-                    detailsList.appendChild(item);
-                });
+                        item.textContent = ` - ${entry.type}: ${timeText} (${entry.description})`;
+                        detailsList.appendChild(item);
+                    });
+                }
             });
+            // 모든 날짜를 순회한 후에도 잔업 내역이 없다면 메시지 표시 (필터링 후 빈 경우)
+            if (detailsList.children.length === 0) {
+                const li = document.createElement('li');
+                li.textContent = '선택한 작업자의 잔업 내역이 없습니다.';
+                detailsList.appendChild(li);
+            }
+
         } else {
             const li = document.createElement('li');
-            li.textContent = '이번 주 잔업 내역이 없습니다.';
+            li.textContent = '선택한 작업자의 잔업 내역이 없습니다.';
             detailsList.appendChild(li);
         }
 
         modal.style.display = 'flex'; // 모달 표시
     }
-
 
     function clearTextarea() {
         document.getElementById('workInput').value = '';
