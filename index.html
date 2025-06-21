@@ -257,23 +257,6 @@
         .overtime-details-content ul li:last-child {
             border-bottom: none;
         }
-
-        .overtime-details-close-button {
-            color: #aaa;
-            position: absolute;
-            top: 0.625rem; /* 10px */
-            right: 0.9375rem; /* 15px */
-            font-size: 1.75rem; /* 28px */
-            font-weight: bold;
-            cursor: pointer;
-        }
-
-        .overtime-details-close-button:hover,
-        .overtime-details-close-button:focus {
-            color: #333;
-            text-decoration: none;
-            cursor: pointer;
-        }
         /* 잔업 시간 및 차감 시간 색상 */
         .overtime-time-positive {
             color: #dc3545; /* 빨간색 */
@@ -295,12 +278,11 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.68 주52시간 적용 (줄바꿈 대응, 다양한 예외 텍스트 추가처리, 팝업 클릭 닫기 추가)</div>
+        <div class="version">Version: 1.68 주52시간 적용 (예외텍스트/줄바꿈/특수문자 처리개선, 팝업 닫기방법 변경)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
         <div class="overtime-details-content">
-            <span class="overtime-details-close-button">&times;</span>
             <h3 id="overtimeDetailsWorkerName"></h3>
             <ul id="overtimeDetailsList">
                 </ul>
@@ -330,11 +312,6 @@
 
     document.getElementById('processButton').addEventListener('click', processWorkData);
     document.getElementById('clearButton').addEventListener('click', clearTextarea);
-
-    // 팝업 닫기 버튼 이벤트 리스너
-    document.querySelector('.overtime-details-close-button').addEventListener('click', () => {
-        document.getElementById('overtimeDetailsModal').style.display = 'none';
-    });
 
     // 팝업 외부 클릭 시 닫기
     window.addEventListener('click', (event) => {
