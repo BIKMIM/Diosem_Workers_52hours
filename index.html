@@ -295,7 +295,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.67 주52시간 적용 (예외텍스트 및 줄바꿈 체크추가, 다양한 ■◆□★ 특수문자 대응)</div>
+        <div class="version">Version: 1.68 주52시간 적용 (줄바꿈 대응, 다양한 예외 텍스트 추가처리, 팝업 클릭 닫기 추가)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -340,6 +340,18 @@
     window.addEventListener('click', (event) => {
         const modal = document.getElementById('overtimeDetailsModal');
         if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    });
+
+    // 팝업 내용 영역 클릭 시에도 닫기 (사용자 편의성 향상)
+    document.addEventListener('click', (event) => {
+        const modal = document.getElementById('overtimeDetailsModal');
+        const modalContent = document.querySelector('.overtime-details-content');
+        
+        // 모달이 열려있고, 모달 내용 영역을 클릭했을 때 닫기
+        if (modal.style.display === 'flex' && 
+            (event.target === modalContent || modalContent.contains(event.target))) {
             modal.style.display = 'none';
         }
     });
