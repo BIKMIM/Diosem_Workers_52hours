@@ -295,7 +295,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.65 주52시간 적용 (특화PM등 예외 텍스트 처리 재정의 )</div>
+        <div class="version">Version: 1.66 주52시간 적용 (특화PM등 예외텍스트 처리 추가, ■, ◆, □, ★다양한 기호 텍스트 추가)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -499,7 +499,8 @@
             const lines = sectionContent.split('\n');
 
             lines.forEach(line => {
-                if (line.trim().startsWith('■')) {
+                // ■, ◆, □, ★ 등 다양한 기호로 시작하는 작업 라인 처리
+                if (line.trim().match(/^[■◆□★]/)) {
                     const lineAssignedWorkers = new Set(); // 현재 작업 라인에 포함된 (연차/반차 제외) 직원들
                     const namesToProcessInLine = new Set(); // 이 라인에서 추출된 중복 제거된 이름들
 
@@ -515,9 +516,19 @@
                     }
 
                     // 슬래시 뒤 인원 추가 (Set을 사용하여 자동으로 중복 제거)
-                    const slashMatch = line.match(/\/\s*([가-힣\s,]+?)(?:\s*\(현업PO_UR\d+|$)/);
+                    // 특화PM 작업의 경우 슬래시 패턴이 다를 수 있으므로 더 유연하게 처리
+                    let slashMatch = line.match(/\/\s*([가-힣\s,]+?)(?:\s*\(현업PO_UR\d+|$)/);
+                    
+                    // 특화PM 작업의 경우 다른 패턴도 시도
+                    if (!slashMatch && line.includes('특화PM')) {
+                        slashMatch = line.match(/\/\s*([가-힣\s,()]+?)(?:\s*\(현업PO_UR\d+|$)/);
+                    }
+                    
                     if (slashMatch) {
-                        const slashNames = slashMatch[1].split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
+                        const slashNames = slashMatch[1].split(/,\s*|\s*\/\s*/).map(name => {
+                            // 괄호 안의 내용 제거 (예: "김진성(샘플수집)" -> "김진성")
+                            return name.replace(/\([^)]*\)/g, '').trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, '');
+                        });
                         slashNames.forEach(name => {
                             if (name && !name.match(/^(프로|기정|차장|TL|부장님|팀장)$/)) {
                                 namesToProcessInLine.add(name);
