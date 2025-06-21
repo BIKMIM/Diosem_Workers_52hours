@@ -586,7 +586,7 @@
                 }
             });
 
-            // 평일: 하루에 2회 이상 작업에 배정되었을 경우 추가 2시간 잔업 부여
+            // 평일: 하루에 2회 이상 작업에 배정되었을 경우 추가 2시간 잔업 부여 (OR 조건)
             if (!isWeekend) {
                 currentDayWorkerLineCounts.forEach((count, worker) => {
                     if (count >= 2 && 
@@ -597,9 +597,7 @@
                         const currentDailyOvertimeData = tempDailyOvertimeForWorkers.get(worker);
                         const additionalOvertimeForDuplicate = 2 * 60; // 중복 작업은 고정 2시간
 
-                        // 이 날 이미 종료시간 초과 또는 (X시간 기준)으로 잔업이 계산되지 않았다면, 2시간 추가
-                        // 즉, currentDailyOvertimeData.totalOvertime에 이미 0보다 큰 값이 있다면 추가하지 않음
-                        // OR 조건이므로, 하나라도 잔업이 있으면 그 값을 사용하고, 둘 다 없는데 2회 이상이면 2시간
+                        // 이 날 이미 다른 잔업이 계산되지 않았다면 (totalOvertime이 0), 2시간 추가
                         if (currentDailyOvertimeData.totalOvertime === 0) {
                             currentDailyOvertimeData.totalOvertime += additionalOvertimeForDuplicate;
                             currentDailyOvertimeData.details.push({
