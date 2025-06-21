@@ -295,7 +295,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.62 주52시간 적용 (정규근무/잔업 재정의)</div>
+        <div class="version">Version: 1.63 주52시간 적용 (분단위 초과 잔업 재정의)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -725,7 +725,7 @@
         // 2. 주간 작업 잔업 시간 결과 표시
         const overtimeSection = document.createElement('div');
         overtimeSection.className = 'result-section';
-        overtimeSection.innerHTML = '<h2>주간 작업 잔업 시간</h2>';
+        overtimeSection.innerHTML = '<h2>주간 누적 잔업 시간</h2>';
 
         let hasOvertimeWorkers = false;
         // 잔업 시간이 있는 직원만 필터링하고, 원래 allWorkers 순서대로 정렬
