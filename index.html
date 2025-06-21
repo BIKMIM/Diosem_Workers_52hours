@@ -295,7 +295,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.65 주52시간 적용 (특화PM 텍스트 처리 추가)</div>
+        <div class="version">Version: 1.65 주52시간 적용 (특화PM등 예외 텍스트 처리 재정의 )</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -409,12 +409,12 @@
         }
 
         // --- 날짜 섹션 파싱 (dateSections 전역 변수에 할당) ---
-        const dateLinePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>/g; // g 플래그 추가
+        const dateLinePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>/;
         
-        // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (global 플래그 추가)
-        const fullAbsenceSubPattern = /(연차|민방위):\s*([가-힣\s,\/]+)/g;
-        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/g;
-        const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/g;
+        // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (global 플래그 제거)
+        const fullAbsenceSubPattern = /(연차|민방위):\s*([가-힣\s,\/]+)/;
+        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/;
+        const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/;
 
 
         const rawDateSections = workInput.split(dateLinePattern); 
@@ -425,42 +425,28 @@
             const dateText = rawDateSections[i]; 
             const sectionContent = rawDateSections[i + 1];
 
-            let currentFullAbsenceNames = new Set();
-            let currentHalfAbsenceNames = new Set();
-            let currentEducationNames = new Set();
+            let fullAbsenceNames = '';
+            let halfAbsenceNames = '';
+            let educationNames = '';
 
-            // matchAll()을 사용하여 모든 일치 항목에서 이름을 추출
-            Array.from(sectionContent.matchAll(fullAbsenceSubPattern)).forEach(match => {
-                match[1].split(/,\s*|\s*\/\s*/).forEach(name => { // 이름 부분 분리
-                    const cleanName = name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, '');
-                    if (allWorkers.includes(cleanName)) currentFullAbsenceNames.add(cleanName);
-                });
-            });
-            Array.from(sectionContent.matchAll(halfAbsenceSubPattern)).forEach(match => {
-                match[1].split(/,\s*|\s*\/\s*/).forEach(name => {
-                    const cleanName = name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, '');
-                    if (allWorkers.includes(cleanName)) currentHalfAbsenceNames.add(cleanName);
-                });
-            });
-            Array.from(sectionContent.matchAll(educationSubPattern)).forEach(match => {
-                match[1].split(/,\s*|\s*\/\s*/).forEach(name => {
-                    const cleanName = name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, '');
-                    if (allWorkers.includes(cleanName)) currentEducationNames.add(cleanName);
-                });
-            });
+            let match;
+            if ((match = sectionContent.match(fullAbsenceSubPattern)) !== null) {
+                fullAbsenceNames = match[2]; // 이름 그룹이 2번째
+            }
+            if ((match = sectionContent.match(halfAbsenceSubPattern)) !== null) {
+                halfAbsenceNames = match[2]; // 이름 그룹이 2번째
+            }
+            if ((match = sectionContent.match(educationSubPattern)) !== null) {
+                educationNames = match[2]; // 이름 그룹이 2번째
+            }
             
             dateSections.push({
                 date: dateText.trim(),
                 content: sectionContent.trim(),
-                fullAbsenceInfo: Array.from(currentFullAbsenceNames).join(', '), // 문자열로 저장
-                halfAbsenceInfo: Array.from(currentHalfAbsenceNames).join(', '),
-                educationInfo: Array.from(currentEducationNames).join(', ')
+                fullAbsenceInfo: fullAbsenceNames,
+                halfAbsenceInfo: halfAbsenceNames,
+                educationInfo: educationNames
             });
-
-            // 각 정규식의 lastIndex 초기화 (matchAll 사용 시 필요)
-            fullAbsenceSubPattern.lastIndex = 0;
-            halfAbsenceSubPattern.lastIndex = 0;
-            educationSubPattern.lastIndex = 0;
         }
 
         if (dateSections.length === 0) {
@@ -476,6 +462,8 @@
             const currentDayWorkerLineCounts = new Map(allWorkers.map(worker => [worker, 0])); // 해당 날짜의 직원별 작업 라인 등장 횟수 (잔업 계산용)
             
             // 평일 하루 잔업 시간 계산을 위한 임시 맵. 각 작업자별로 그 날 발생하는 잔업을 임시 저장
+            // 'totalOvertime': 해당 날짜에 발생한 모든 잔업의 합 (초과 시간 기준)
+            // 'details': 해당 날짜에 발생한 개별 잔업 이벤트 목록
             const tempDailyOvertimeForWorkers = new Map(allWorkers.map(worker => [worker, { totalOvertime: 0, details: [] }]));
 
 
@@ -518,23 +506,31 @@
                     // 작업 라인에서 이름 추출
                     const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장님|팀장)?/g;
                     let match;
-                    // namesFoundInLine.add(match[0]) 대신 namesToProcessInLine.add(match[0]) 사용
                     while ((match = nameRegex.exec(line)) !== null) {
-                        namesToProcessInLine.add(match[0]);
+                        const name = match[0];
+                        // 직책만 있는 경우는 제외 (예: "프로", "차장" 등)
+                        if (!name.match(/^(프로|기정|차장|TL|부장님|팀장)$/)) {
+                            namesToProcessInLine.add(name);
+                        }
                     }
 
                     // 슬래시 뒤 인원 추가 (Set을 사용하여 자동으로 중복 제거)
-                    const slashMatch = line.match(/\/\s*([가-힣\s,]+)(?:\s*\(현업PO_UR\d+완료\))?/);
+                    const slashMatch = line.match(/\/\s*([가-힣\s,]+?)(?:\s*\(현업PO_UR\d+|$)/);
                     if (slashMatch) {
                         const slashNames = slashMatch[1].split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                        slashNames.forEach(name => namesToProcessInLine.add(name));
+                        slashNames.forEach(name => {
+                            if (name && !name.match(/^(프로|기정|차장|TL|부장님|팀장)$/)) {
+                                namesToProcessInLine.add(name);
+                            }
+                        });
                     }
 
                     // 최종 처리할 이름들 (직책 제거 및 유효성 검사)
                     namesToProcessInLine.forEach(rawName => {
-                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님)$/, '').trim();
-                        // 교육은 근무로 간주하므로 제외하지 않음
-                        if (allWorkers.includes(cleanName) && 
+                        const cleanName = rawName.replace(/(프로|기정|차장|TL|부장님|팀장)$/, '').trim();
+                        // 빈 문자열이나 직책만 있는 경우 제외
+                        if (cleanName && cleanName.length >= 2 && 
+                            allWorkers.includes(cleanName) && 
                             !workerAbsenceInfo.get(cleanName).full.has(currentDate) && 
                             !workerAbsenceInfo.get(cleanName).half.has(currentDate)) { // 연차/반차 사용자는 작업자로 카운트 안 함
                             
@@ -543,10 +539,6 @@
                             currentDayWorkerLineCounts.set(cleanName, currentDayWorkerLineCounts.get(cleanName) + 1); // 해당 날짜의 라인별 등장 횟수 (중복 작업 판단용)
                         }
                     });
-
-                    // 여기서 nameRegex의 lastIndex를 초기화
-                    nameRegex.lastIndex = 0;
-
 
                     let lineOvertimeMinutes = 0;
                     let overtimeType = '';
@@ -603,7 +595,7 @@
                 }
             });
 
-            // 평일: 하루에 2회 이상 작업에 배정되었을 경우 추가 2시간 잔업 부여 (OR 조건)
+            // 평일: 하루에 2회 이상 작업에 배정되었을 경우 추가 2시간 잔업 부여
             if (!isWeekend) {
                 currentDayWorkerLineCounts.forEach((count, worker) => {
                     if (count >= 2 && 
@@ -614,8 +606,9 @@
                         const currentDailyOvertimeData = tempDailyOvertimeForWorkers.get(worker);
                         const additionalOvertimeForDuplicate = 2 * 60; // 중복 작업은 고정 2시간
 
-                        // 이 날 이미 다른 잔업이 계산되지 않았다면 (totalOvertime이 0), 2시간 추가
-                        // 즉, currentDailyOvertimeData.totalOvertime이 0인 경우에만 중복 작업으로 인한 2시간을 추가
+                        // 이 날 이미 종료시간 초과 또는 (X시간 기준)으로 잔업이 계산되지 않았다면, 2시간 추가
+                        // 즉, currentDailyOvertimeData.totalOvertime에 이미 0보다 큰 값이 있다면 추가하지 않음
+                        // OR 조건이므로, 하나라도 잔업이 있으면 그 값을 사용하고, 둘 다 없는데 2회 이상이면 2시간
                         if (currentDailyOvertimeData.totalOvertime === 0) {
                             currentDailyOvertimeData.totalOvertime += additionalOvertimeForDuplicate;
                             currentDailyOvertimeData.details.push({
