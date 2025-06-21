@@ -295,7 +295,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.66 주52시간 적용 (특화PM등 예외텍스트 처리 추가, ■, ◆, □, ★다양한 기호 텍스트 추가)</div>
+        <div class="version">Version: 1.67 주52시간 적용 (작업일정 줄바꿈 체크추가, 다양한 ■◆□★ 특수문자 대응)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -498,16 +498,42 @@
             const isWeekend = currentDate.includes('토요일') || currentDate.includes('일요일');
             const lines = sectionContent.split('\n');
 
-            lines.forEach(line => {
+            lines.forEach((line, index) => {
                 // ■, ◆, □, ★ 등 다양한 기호로 시작하는 작업 라인 처리
                 if (line.trim().match(/^[■◆□★]/)) {
                     const lineAssignedWorkers = new Set(); // 현재 작업 라인에 포함된 (연차/반차 제외) 직원들
                     const namesToProcessInLine = new Set(); // 이 라인에서 추출된 중복 제거된 이름들
 
-                    // 작업 라인에서 이름 추출
+                    // 현재 라인과 다음 몇 줄을 합쳐서 처리 (특화PM 같은 다중 라인 작업 대응)
+                    let fullWorkContent = line;
+                    let nextLineIndex = index + 1;
+                    
+                    // 다음 줄들을 확인하여 작업 내용의 일부인지 판단
+                    while (nextLineIndex < lines.length) {
+                        const nextLine = lines[nextLineIndex].trim();
+                        
+                        // 다음 작업(■, ◆, □, ★로 시작) 또는 날짜 섹션을 만나면 중단
+                        if (nextLine.match(/^[■◆□★]/) || nextLine.match(/^<\d{1,2}월\s*\d{1,2}일/)) {
+                            break;
+                        }
+                        
+                        // 비어있지 않은 줄이면 작업 내용에 추가
+                        if (nextLine.length > 0) {
+                            fullWorkContent += ' ' + nextLine;
+                        }
+                        
+                        nextLineIndex++;
+                        
+                        // 최대 5줄까지만 확인 (무한 루프 방지)
+                        if (nextLineIndex - index > 5) {
+                            break;
+                        }
+                    }
+
+                    // 합쳐진 전체 작업 내용에서 이름 추출
                     const nameRegex = /[가-힣]{2,3}(?:프로|기정|차장|TL|부장님|팀장)?/g;
                     let match;
-                    while ((match = nameRegex.exec(line)) !== null) {
+                    while ((match = nameRegex.exec(fullWorkContent)) !== null) {
                         const name = match[0];
                         // 직책만 있는 경우는 제외 (예: "프로", "차장" 등)
                         if (!name.match(/^(프로|기정|차장|TL|부장님|팀장)$/)) {
@@ -517,11 +543,11 @@
 
                     // 슬래시 뒤 인원 추가 (Set을 사용하여 자동으로 중복 제거)
                     // 특화PM 작업의 경우 슬래시 패턴이 다를 수 있으므로 더 유연하게 처리
-                    let slashMatch = line.match(/\/\s*([가-힣\s,]+?)(?:\s*\(현업PO_UR\d+|$)/);
+                    let slashMatch = fullWorkContent.match(/\/\s*([가-힣\s,]+?)(?:\s*\(현업PO_UR\d+|$)/);
                     
                     // 특화PM 작업의 경우 다른 패턴도 시도
-                    if (!slashMatch && line.includes('특화PM')) {
-                        slashMatch = line.match(/\/\s*([가-힣\s,()]+?)(?:\s*\(현업PO_UR\d+|$)/);
+                    if (!slashMatch && fullWorkContent.includes('특화PM')) {
+                        slashMatch = fullWorkContent.match(/\/\s*([가-힣\s,()]+?)(?:\s*\(현업PO_UR\d+|$)/);
                     }
                     
                     if (slashMatch) {
@@ -553,15 +579,15 @@
 
                     let lineOvertimeMinutes = 0;
                     let overtimeType = '';
-                    const rawLineContentShort = line.trim().substring(0, Math.min(line.trim().length, 50)) + (line.trim().length > 50 ? '...' : '');
+                    const rawLineContentShort = fullWorkContent.trim().substring(0, Math.min(fullWorkContent.trim().length, 50)) + (fullWorkContent.trim().length > 50 ? '...' : '');
 
                     if (isWeekend) {
                         lineOvertimeMinutes = 5 * 60; // 주말은 고정 5시간
                         overtimeType = '주말 작업';
                     } else {
                         // 평일 작업: (X시간 기준) 또는 18시 이후 종료 기준
-                        const durationMatch = line.match(/\((\d{1,2}시간(?:\d{1,2}분)?) 기준\)/);
-                        const timeRangeMatch = line.match(/(\d{1,2}시(?:\d{1,2}분)?)-(\d{1,2}시(?:\d{1,2}분)?)/);
+                        const durationMatch = fullWorkContent.match(/\((\d{1,2}시간(?:\d{1,2}분)?) 기준\)/);
+                        const timeRangeMatch = fullWorkContent.match(/(\d{1,2}시(?:\d{1,2}분)?)-(\d{1,2}시(?:\d{1,2}분)?)/);
                         
                         let durationBasedOvertime = 0;
                         if (durationMatch) {
