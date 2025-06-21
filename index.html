@@ -278,7 +278,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.68 주52시간 적용 (예외텍스트/줄바꿈/특수문자 처리개선, 팝업 닫기방법 변경)</div>
+        <div class="version">Version: 1.7 주52시간 적용 (줄바꿈/특수문자 처리개선,주말작업 표기된시간으로 처리,팝업창 처리개선)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -571,8 +571,15 @@
                     const rawLineContentShort = fullWorkContent.trim().substring(0, Math.min(fullWorkContent.trim().length, 50)) + (fullWorkContent.trim().length > 50 ? '...' : '');
 
                     if (isWeekend) {
-                        lineOvertimeMinutes = 5 * 60; // 주말은 고정 5시간
-                        overtimeType = '주말 작업';
+                        // 주말 작업: 명시된 시간이 있으면 그 시간 기준, 없으면 기본 5시간
+                        const weekendDurationMatch = fullWorkContent.match(/\((\d{1,2}시간(?:\d{1,2}분)?)기준\)/);
+                        if (weekendDurationMatch) {
+                            lineOvertimeMinutes = parseDurationToMinutes(weekendDurationMatch[1]);
+                            overtimeType = '주말 작업 (명시된 시간)';
+                        } else {
+                            lineOvertimeMinutes = 5 * 60; // 기본 5시간
+                            overtimeType = '주말 작업';
+                        }
                     } else {
                         // 평일 작업: (X시간 기준) 또는 18시 이후 종료 기준
                         const durationMatch = fullWorkContent.match(/\((\d{1,2}시간(?:\d{1,2}분)?) 기준\)/);
