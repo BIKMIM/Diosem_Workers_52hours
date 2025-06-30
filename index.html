@@ -272,13 +272,13 @@
     <div class="container">
         <h1>Diosem 작업 배정 현황</h1>
         <textarea id="workInput" placeholder="여기에 주간 작업 내용을 붙여넣으세요."></textarea>
-        <button id="processButton">작업 미배정 인원 확인 (기술팀 총 20명)</button>
+        <button id="processButton">작업 미배정 인원 확인 (기술팀 총 21명)</button>
         <button id="clearButton">초기화</button>
 
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.7 주52시간 적용 (줄바꿈/특수문자 처리개선,주말작업 표기된시간으로 처리,팝업창 처리개선)</div>
+        <div class="version">Version: 1.71 주52시간 적용 (신입사원 추가)</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -293,7 +293,8 @@
     // 전체 직원 명단 (직급 순서, 20명)
     const allWorkers = [
         '이상엽', '서한주', '강범일', '최광섭', '조광호', '최현철', '김진탁', '신재웅', '권용덕', '김태영',
-        '노진성', '장다빈', '조용준', '신지호', '최이택', '고상원', '박정민', '박경식', '임영곤', '윤호진'
+        '노진성', '장다빈', '조용준', '신지호', '최이택', '고상원', '박정민', '박경식', '임영곤', '윤호진',
+        '박준경'
     ];
 
     // 주간 잔업 상세 내역을 저장할 전역 맵
@@ -401,7 +402,7 @@
         const dateLinePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>/;
         
         // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (global 플래그 제거)
-        const fullAbsenceSubPattern = /(연차|민방위):\s*([가-힣\s,\/]+)/;
+        const fullAbsenceSubPattern = /(연차|민방위|예비군):\s*([가-힣\s,\/]+)/;
         const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/;
         const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/;
 
@@ -716,7 +717,7 @@
             
             let absenceText = [];
             if (fullAbsenceNamesForDisplay.length > 0) {
-                absenceText.push(`연차/민방위: ${fullAbsenceNamesForDisplay.join(', ')} (8시간 차감)`);
+                absenceText.push(`연차/민방위/예비군: ${fullAbsenceNamesForDisplay.join(', ')} (8시간 차감)`);
             }
             if (halfAbsenceNamesForDisplay.length > 0) {
                 absenceText.push(`반차/오전반차/오후반차: ${halfAbsenceNamesForDisplay.join(', ')} (4시간 차감)`);
@@ -914,7 +915,7 @@
                 // 해당 날짜에 연차/반차/교육 정보가 있다면 표시
                 let absenceDetailTexts = [];
                 if (workerInfo.full.has(date)) {
-                    absenceDetailTexts.push(`연차/민방위: <span class="overtime-time-negative">-8시간</span>`);
+                    absenceDetailTexts.push(`연차/민방위/예비군: <span class="overtime-time-negative">-8시간</span>`);
                 }
                 if (workerInfo.half.has(date)) {
                     absenceDetailTexts.push(`반차/오전반차/오후반차: <span class="overtime-time-negative">-4시간</span>`);
