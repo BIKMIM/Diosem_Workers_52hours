@@ -402,9 +402,9 @@
         const dateLinePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>/;
         
         // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (global 플래그 제거)
-        const fullAbsenceSubPattern = /(연차|민방위|예비군):\s*([가-힣\s,\/]+)/;
-        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/;
-        const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/;
+        const fullAbsenceSubPattern = /(연차|민방위|예비군):\s*([가-힣\s,\/]+)/g;
+        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/g;
+        const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/g;
 
 
         const rawDateSections = workInput.split(dateLinePattern); 
@@ -419,16 +419,29 @@
             let halfAbsenceNames = '';
             let educationNames = '';
 
+            // 각 패턴을 전역으로 검색하여 모든 매칭 항목 수집
             let match;
-            if ((match = sectionContent.match(fullAbsenceSubPattern)) !== null) {
-                fullAbsenceNames = match[2]; // 이름 그룹이 2번째
+            
+            // 연차/민방위/예비군 처리
+            while ((match = fullAbsenceSubPattern.exec(sectionContent)) !== null) {
+                if (fullAbsenceNames) fullAbsenceNames += ', ';
+                fullAbsenceNames += match[2];
             }
-            if ((match = sectionContent.match(halfAbsenceSubPattern)) !== null) {
-                halfAbsenceNames = match[2]; // 이름 그룹이 2번째
+            fullAbsenceSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
+            
+            // 반차 처리
+            while ((match = halfAbsenceSubPattern.exec(sectionContent)) !== null) {
+                if (halfAbsenceNames) halfAbsenceNames += ', ';
+                halfAbsenceNames += match[2];
             }
-            if ((match = sectionContent.match(educationSubPattern)) !== null) {
-                educationNames = match[2]; // 이름 그룹이 2번째
+            halfAbsenceSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
+            
+            // 교육 처리
+            while ((match = educationSubPattern.exec(sectionContent)) !== null) {
+                if (educationNames) educationNames += ', ';
+                educationNames += match[2];
             }
+            educationSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
             
             dateSections.push({
                 date: dateText.trim(),
