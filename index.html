@@ -278,7 +278,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.73 정규식에 global 플래그 추가(슬래쉬 처리 관련)</div>
+        <div class="version">Version: 1.73 정규식 패턴 수정, 이름 추출 로직 강화</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -401,10 +401,10 @@
         // --- 날짜 섹션 파싱 (dateSections 전역 변수에 할당) ---
         const dateLinePattern = /<(\d{1,2}월\s*\d{1,2}일\s*[가-힣]{1}요일)>/;
         
-        // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (global 플래그 제거)
-        const fullAbsenceSubPattern = /(연차|민방위|예비군):\s*([가-힣\s,\/]+)/g;
-        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]+)/g;
-        const educationSubPattern = /(교육):\s*([가-힣\s,\/]+)/g;
+        // 각 부재 유형별 키워드와 이름 목록을 찾는 정규식 패턴들 (슬래시 구분도 처리)
+        const fullAbsenceSubPattern = /(연차|민방위|예비군):\s*([가-힣\s,\/]*)/g;
+        const halfAbsenceSubPattern = /(반차|오전반차|오후반차):\s*([가-힣\s,\/]*)/g;
+        const educationSubPattern = /(교육):\s*([가-힣\s,\/]*)/g;
 
 
         const rawDateSections = workInput.split(dateLinePattern); 
@@ -472,16 +472,30 @@
 
             // 1. 연차/반차/교육 등 인원 처리: 미배정 및 잔업 계산에 영향을 줌
             if (section.fullAbsenceInfo) {
-                const names = section.fullAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                names.forEach(name => {
+                // 슬래시와 다른 키워드들을 제거하고 이름만 추출
+                const cleanedNames = section.fullAbsenceInfo
+                    .replace(/\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):\s*/g, ', ') // 슬래시 + 키워드를 쉼표로 변환
+                    .replace(/^[,\s]+|[,\s]+$/g, '') // 앞뒤 쉼표/공백 제거
+                    .split(/,\s*|\s*\/\s*/) // 쉼표나 슬래시로 분리
+                    .map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''))
+                    .filter(name => name && !name.match(/^(연차|민방위|예비군|반차|오전반차|오후반차|교육)$/)); // 키워드 제외
+                
+                cleanedNames.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).full.add(currentDate);
                     }
                 });
             }
             if (section.halfAbsenceInfo) {
-                const names = section.halfAbsenceInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                names.forEach(name => {
+                // 슬래시와 다른 키워드들을 제거하고 이름만 추출
+                const cleanedNames = section.halfAbsenceInfo
+                    .replace(/\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):\s*/g, ', ') // 슬래시 + 키워드를 쉼표로 변환
+                    .replace(/^[,\s]+|[,\s]+$/g, '') // 앞뒤 쉼표/공백 제거
+                    .split(/,\s*|\s*\/\s*/) // 쉼표나 슬래시로 분리
+                    .map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''))
+                    .filter(name => name && !name.match(/^(연차|민방위|예비군|반차|오전반차|오후반차|교육)$/)); // 키워드 제외
+                
+                cleanedNames.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).half.add(currentDate);
                     }
@@ -489,8 +503,15 @@
             }
             // 교육 인원은 차감되지 않고 근무하는 것으로 간주
             if (section.educationInfo) {
-                const names = section.educationInfo.split(/,\s*|\s*\/\s*/).map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''));
-                names.forEach(name => {
+                // 슬래시와 다른 키워드들을 제거하고 이름만 추출
+                const cleanedNames = section.educationInfo
+                    .replace(/\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):\s*/g, ', ') // 슬래시 + 키워드를 쉼표로 변환
+                    .replace(/^[,\s]+|[,\s]+$/g, '') // 앞뒤 쉼표/공백 제거
+                    .split(/,\s*|\s*\/\s*/) // 쉼표나 슬래시로 분리
+                    .map(name => name.trim().replace(/(프로|기정|차장|TL|부장님|팀장)$/, ''))
+                    .filter(name => name && !name.match(/^(연차|민방위|예비군|반차|오전반차|오후반차|교육)$/)); // 키워드 제외
+                
+                cleanedNames.forEach(name => {
                     if (allWorkers.includes(name)) {
                         workerAbsenceInfo.get(name).education.add(currentDate);
                     }
