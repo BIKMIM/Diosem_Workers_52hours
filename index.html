@@ -278,7 +278,7 @@
         <div id="results" class="result-section" style="display:none;">
             <h2>요일별 미배정 인원</h2>
             </div>
-        <div class="version">Version: 1.73 정규식 패턴 수정, 이름 추출 로직 강화</div>
+        <div class="version">Version: 1.76 이름 추출을 위한 키워드 및 정규식 개선</div>
     </div>
 
     <div id="overtimeDetailsModal" class="overtime-details-modal">
@@ -419,29 +419,29 @@
             let halfAbsenceNames = '';
             let educationNames = '';
 
-            // 각 패턴을 전역으로 검색하여 모든 매칭 항목 수집
-            let match;
+            // 키워드 다음부터 다른 키워드나 작업이 나올 때까지의 모든 이름을 찾는 방식
             
             // 연차/민방위/예비군 처리
-            while ((match = fullAbsenceSubPattern.exec(sectionContent)) !== null) {
+            const fullAbsencePattern = /(연차|민방위|예비군):\s*([^■◆□★<]*?)(?=\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):|■|◆|□|★|<|$)/g;
+            let match;
+            while ((match = fullAbsencePattern.exec(sectionContent)) !== null) {
                 if (fullAbsenceNames) fullAbsenceNames += ', ';
-                fullAbsenceNames += match[2];
+                fullAbsenceNames += match[2].trim();
             }
-            fullAbsenceSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
             
             // 반차 처리
-            while ((match = halfAbsenceSubPattern.exec(sectionContent)) !== null) {
+            const halfAbsencePattern = /(반차|오전반차|오후반차):\s*([^■◆□★<]*?)(?=\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):|■|◆|□|★|<|$)/g;
+            while ((match = halfAbsencePattern.exec(sectionContent)) !== null) {
                 if (halfAbsenceNames) halfAbsenceNames += ', ';
-                halfAbsenceNames += match[2];
+                halfAbsenceNames += match[2].trim();
             }
-            halfAbsenceSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
             
             // 교육 처리
-            while ((match = educationSubPattern.exec(sectionContent)) !== null) {
+            const educationPattern = /(교육):\s*([^■◆□★<]*?)(?=\s*\/\s*(연차|민방위|예비군|반차|오전반차|오후반차|교육):|■|◆|□|★|<|$)/g;
+            while ((match = educationPattern.exec(sectionContent)) !== null) {
                 if (educationNames) educationNames += ', ';
-                educationNames += match[2];
+                educationNames += match[2].trim();
             }
-            educationSubPattern.lastIndex = 0; // 정규식 인덱스 리셋
             
             dateSections.push({
                 date: dateText.trim(),
